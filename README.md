@@ -11,7 +11,7 @@ work?**
 
 - A Bronze/Silver/Gold lakehouse workflow implemented as four Databricks notebook tasks.
 - Data-contract checks, invalid-row quarantine, and a configurable quality gate.
-- Idempotent Delta `MERGE` operations so retries do not duplicate customer snapshots.
+- Hash-keyed Bronze inserts and customer/date-keyed Silver Delta `MERGE` operations for repeated snapshot loading.
 - Overall and segment-level churn, revenue, tenure, and revenue-at-risk measures.
 - SQL queries for KPI cards, retention priorities, snapshot trends, and quality monitoring.
 - A deterministic stakeholder report whose numbers come directly from Gold metrics.
@@ -98,18 +98,57 @@ databricks bundle deploy -t dev
 databricks bundle run telco_customer_analytics -t dev
 ```
 
-The job is deployed with its weekly schedule paused. Set `catalog`, `schema`, `source_path`, and
+The job definition starts with its weekly schedule paused. Set `catalog`, `schema`, `source_path`, and
 `minimum_quality_rate` in bundle variables before enabling it. Supplying `ai_endpoint` enables
 the optional aggregate-only AI summary; leaving it empty keeps reporting deterministic.
 
 ## Data quality and governance
 
-- Required columns and accepted categorical values form an explicit source contract.
-- Invalid numeric values, missing or duplicate IDs, and unknown categories are quarantined.
-- Downstream work stops when the accepted-row rate is below the configured threshold.
+- The source contract requires 21 columns and validates numeric fields and selected categories,
+  including churn, contract, internet service, and four Yes/No flags; it does not validate every
+  categorical column.
+- Invalid numeric values, missing IDs, duplicates, and unsupported values in checked categories
+  are quarantined. A blank total charge is accepted only for a zero-tenure customer.
+- In Databricks, a failed Silver quality gate prevents dependent Gold and report tasks from
+  running, but Silver and quarantine writes have already occurred. The local runner writes its
+  outputs and manifest before raising on a failed gate; inspect `quality_gate_passed` before
+  consuming those files.
 - Customer identifiers never enter the optional AI prompt.
 - Numeric claims in the default report are generated from current Gold-layer results.
 - The run manifest makes each local execution traceable to an exact input file.
+
+## Implementation details
+
+The local runner and Spark notebooks cover the same business workflow, but are not identical
+implementations. Locally, the first valid record for a customer ID is retained and later
+duplicates are quarantined. Bronze uses a hash of the snapshot date and source fields to skip
+previously inserted records; Spark Silver quarantines all remaining records with a duplicate
+customer ID in that snapshot. Silver merges on customer ID and date, while Gold overwrites the
+selected date partition. These are insert/update workflows, not source-deletion reconciliation.
+
+Gold groups customers by contract, internet service, tenure band, payment group, and support
+status. `monthly_revenue_at_risk` means the sum of monthly charges for records already labelled
+as churned, not a forecast of future losses. Segments overlap across dimensions, so their values
+must not be added together as a single portfolio total.
+
+The default brief is built directly from calculated metrics. Optional AI reporting sends only
+aggregate evidence and asks the model to avoid unsupported numbers and causal claims; the code
+does not automatically verify the generated text. The local brief selects segments with at
+least the larger of 10 customers or 1% of the snapshot (falling back when none qualify); the
+Databricks priority view uses a fixed 10-customer minimum.
+
+## Code references
+
+- [Source checks](src/telco_analytics/quality.py) and
+  [customer features](src/telco_analytics/transformations.py).
+- [Bronze ingestion](notebooks/01_bronze_ingestion.py),
+  [Silver modelling](notebooks/02_silver_customer_model.py), and
+  [Gold metrics](notebooks/03_gold_retention_metrics.py).
+- [Local KPIs](src/telco_analytics/metrics.py),
+  [brief generation](src/telco_analytics/insights.py), and
+  [output manifest](src/telco_analytics/pipeline.py).
+- [Task dependencies and retries](resources/telco_analytics.job.yml),
+  [tests](tests/), and [CI workflow](.github/workflows/ci.yml).
 
 ## Repository guide
 
