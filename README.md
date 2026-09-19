@@ -7,6 +7,16 @@ The project focuses on a practical business question: **which customer segments 
 retention team investigate first, and how can that analysis run repeatedly with minimal manual
 work?**
 
+## Product at a glance
+
+| | |
+| --- | --- |
+| **Users** | Retention analysts and business stakeholders |
+| **Input** | Repeated customer snapshots containing account, service, contract, and churn data |
+| **Output** | Governed tables, dashboard-ready KPIs, segment priorities, and a stakeholder brief |
+| **Trust controls** | Invalid-row quarantine, duplicate checks, quality gates, and traceable run manifests |
+| **Runs in** | Databricks with Delta Lake, or locally through the tested Python runner |
+
 ## What it delivers
 
 - A Bronze/Silver/Gold lakehouse workflow implemented as four Databricks notebook tasks.
