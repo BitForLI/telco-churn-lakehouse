@@ -1,4 +1,4 @@
-# Telco Lakehouse Analytics
+# Telco Churn Lakehouse Analytics
 
 A Databricks-ready analytics product that turns a telecommunications customer snapshot into
 quality-controlled tables, reusable retention metrics, and an evidence-based stakeholder brief.
